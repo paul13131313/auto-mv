@@ -2,9 +2,9 @@ import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-// 多数のリングを密集配置 → 1本の線から生まれるような挙動
+// 超密集: 同じ半径にほぼ重なった線の束
 const RING_SEGMENTS = 128;
-const RING_COUNT = 16;
+const RING_COUNT = 20;
 
 export default function WaveMode({ getAudioData, params }) {
   const groupRef = useRef();
@@ -45,10 +45,11 @@ export default function WaveMode({ getAudioData, params }) {
       const posArr = posAttr.array;
       const colArr = colAttr.array;
 
-      // 密集配置: 全リングがほぼ同じ半径から始まる
-      // リング間隔 0.08 → 16本が 1.0〜2.2 の狭い範囲に密集
-      const baseRadius = 1.0 + ringIndex * 0.08;
-      const ringPhase = ringIndex * 0.4;
+      // 超密集: 全20本が半径2.0を中心に±0.01の範囲に収まる
+      // 画面上で1ミリ以内に何本も重なる
+      const baseRadius = 2.0 + (ringIndex - RING_COUNT / 2) * 0.01;
+      // リングごとのわずかな位相差 → 音で線がバラける
+      const ringPhase = ringIndex * 0.15;
 
       const waveComplexity = 2 + complexity * 12;
 
@@ -56,24 +57,24 @@ export default function WaveMode({ getAudioData, params }) {
         const angle = (i / RING_SEGMENTS) * Math.PI * 2;
         const i3 = i * 3;
 
-        // 低音: 大きなうねり（リズムに強く反応 → 線が広がる）
+        // 低音: 大きなうねり（リズムで全体が揺れる）
         const wave1 = Math.sin(angle * 2 + time * timeSpeed + ringPhase) * a.bass * (1.5 + intensity);
-        // 中音: リングごとに位相がずれて広がる
-        const wave2 = Math.sin(angle * 4 + time * timeSpeed * 0.7 + ringPhase * 1.5) * a.mid * 0.8;
+        // 中音: リングごとの位相差で線が分離する
+        const wave2 = Math.sin(angle * 4 + time * timeSpeed * 0.7 + ringPhase * 2.0) * a.mid * 0.8;
         // 高音: 細かい波
-        const wave3 = Math.sin(angle * waveComplexity + time * timeSpeed * 1.5) * a.high * 0.5;
+        const wave3 = Math.sin(angle * waveComplexity + time * timeSpeed * 1.5 + ringPhase * 0.8) * a.high * 0.5;
         // 微振動
-        const wave4 = Math.sin(angle * (waveComplexity * 2) + time * timeSpeed * 2.0 + ringPhase * 0.5) * a.high * 0.15 * complexity;
+        const wave4 = Math.sin(angle * (waveComplexity * 2) + time * timeSpeed * 2.0 + ringPhase) * a.high * 0.15 * complexity;
 
         const r = (baseRadius + wave1 + wave2 + wave3 + wave4) * scale;
         posArr[i3] = Math.cos(angle) * r;
         posArr[i3 + 1] = Math.sin(angle) * r;
-        // Z方向もほぼ同じ平面に（密集感を出す）
-        posArr[i3 + 2] = ringIndex * 0.05 - RING_COUNT * 0.025;
+        // 完全に同一平面
+        posArr[i3 + 2] = 0;
 
         // 色
         const centroidNorm = Math.min(a.spectralCentroid / 4000, 1);
-        const hue = (centroidNorm * 0.8 + ringIndex * 0.04 + time * 0.02) % 1;
+        const hue = (centroidNorm * 0.8 + ringIndex * 0.03 + time * 0.02) % 1;
         const sat = 0.8;
         const lightness = 0.5 + a.volume * 0.3;
         tmpColor.setHSL(hue, sat, lightness);
