@@ -91,6 +91,11 @@ export function useAudioAnalyser() {
     setInputMode('mic');
     setIsPlaying(true);
     setDuration(0);
+    // マイク時はハウリング防止のため音量0にする
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = 0;
+    }
+    setVolume(0);
   }, [ensureContext, disconnectSource]);
 
   // 再生/一時停止トグル
