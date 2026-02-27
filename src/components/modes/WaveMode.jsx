@@ -2,8 +2,9 @@ import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-const RING_SEGMENTS = 256;
-const RING_COUNT = 16;
+// 高解像度セグメント + 前のパターンのリング構成に近い形
+const RING_SEGMENTS = 512;
+const RING_COUNT = 10;
 
 export default function WaveMode({ getAudioData, params }) {
   const groupRef = useRef();
@@ -17,28 +18,27 @@ export default function WaveMode({ getAudioData, params }) {
     return Array.from({ length: RING_COUNT }, (_, ringIndex) => {
       const positions = new Float32Array((RING_SEGMENTS + 1) * 3);
       const colors = new Float32Array((RING_SEGMENTS + 1) * 3);
-      const baseRadius = 0.3 + ringIndex * 0.25;
-      return { positions, colors, baseRadius, ringIndex };
+      return { positions, colors };
     });
   }, []);
 
-  // 色キャッシュ（毎フレームnew THREE.Colorを避ける）
   const tmpColor = useMemo(() => new THREE.Color(), []);
 
   useFrame((state) => {
     if (!groupRef.current) return;
     const audio = getAudioData();
     const a = audioRef.current;
-    a.bass += (audio.bass - a.bass) * 0.15;
-    a.mid += (audio.mid - a.mid) * 0.15;
-    a.high += (audio.high - a.high) * 0.15;
-    a.volume += (audio.volume - a.volume) * 0.15;
-    a.spectralCentroid += (audio.spectralCentroid - a.spectralCentroid) * 0.1;
+    // ゆっくりスムージング（連続性重視）
+    a.bass += (audio.bass - a.bass) * 0.08;
+    a.mid += (audio.mid - a.mid) * 0.08;
+    a.high += (audio.high - a.high) * 0.08;
+    a.volume += (audio.volume - a.volume) * 0.08;
+    a.spectralCentroid += (audio.spectralCentroid - a.spectralCentroid) * 0.06;
 
     const time = state.clock.elapsedTime;
-    const scale = 1 + a.volume * (1 + intensity * 2);
-    const timeSpeed = 0.5 + speed * 2;
-    const waveComplexity = 2 + complexity * 12;
+    const scale = 1 + a.volume * 1.5;
+    // ゆったりとした時間進行
+    const timeSpeed = 0.3 + speed * 0.7;
 
     groupRef.current.children.forEach((line, ringIndex) => {
       const geo = line.geometry;
@@ -46,29 +46,36 @@ export default function WaveMode({ getAudioData, params }) {
       const colAttr = geo.attributes.color;
       const posArr = posAttr.array;
       const colArr = colAttr.array;
-      const baseRadius = 0.3 + ringIndex * 0.25;
-      const ringOffset = ringIndex * 0.7;
+
+      // 前のパターンに近い間隔
+      const baseRadius = 1 + ringIndex * 0.4;
+      const ringPhase = ringIndex * 0.8;
 
       for (let i = 0; i <= RING_SEGMENTS; i++) {
         const angle = (i / RING_SEGMENTS) * Math.PI * 2;
         const i3 = i * 3;
 
-        // 複数の波を重ねる（complexityで細かさが変わる）
-        const wave1 = Math.sin(angle * 2 + time * timeSpeed * 1.5 + ringOffset) * a.bass * (1 + intensity);
-        const wave2 = Math.sin(angle * waveComplexity + time * timeSpeed * 3) * a.high * 0.4;
-        const wave3 = Math.sin(angle * (4 + complexity * 6) + time * timeSpeed * 2 + ringOffset * 0.5) * a.mid * 0.6;
-        const wave4 = Math.sin(angle * (waveComplexity * 2) + time * timeSpeed * 4) * a.high * 0.2 * complexity;
+        // ゆったりした大きなうねり（低音）
+        const wave1 = Math.sin(angle * 2 + time * timeSpeed * 0.8 + ringPhase) * a.bass * (1.2 + intensity * 0.8);
+        // 中音の穏やかなうねり
+        const wave2 = Math.sin(angle * 3 + time * timeSpeed * 0.6 + ringPhase * 0.7) * a.mid * 0.6;
+        // 高音の繊細な揺らぎ（細かい波）
+        const highFreq = 6 + complexity * 10;
+        const wave3 = Math.sin(angle * highFreq + time * timeSpeed * 1.2) * a.high * (0.15 + complexity * 0.2);
+        // さらに細かい微振動
+        const wave4 = Math.sin(angle * (highFreq * 2.3) + time * timeSpeed * 1.8 + ringPhase * 0.3) * a.high * 0.06 * complexity;
 
         const r = (baseRadius + wave1 + wave2 + wave3 + wave4) * scale;
         posArr[i3] = Math.cos(angle) * r;
         posArr[i3 + 1] = Math.sin(angle) * r;
-        posArr[i3 + 2] = (ringIndex - RING_COUNT * 0.5) * 0.15;
+        posArr[i3 + 2] = ringIndex * 0.3 - RING_COUNT * 0.15;
 
-        // 色: リングごとに少しずつずらし + 周波数重心
+        // 色: 周波数重心でベース色決定、リングごとに微妙にずらす
         const centroidNorm = Math.min(a.spectralCentroid / 4000, 1);
-        const hue = (centroidNorm * 0.7 + ringIndex * 0.04 + time * 0.02) % 1;
-        const lightness = 0.45 + a.volume * 0.25 + intensity * 0.1;
-        tmpColor.setHSL(hue, 0.85, lightness);
+        const hue = (centroidNorm * 0.8 + ringIndex * 0.02 + time * 0.008) % 1;
+        const sat = 0.6 + a.volume * 0.2;
+        const lightness = 0.35 + a.volume * 0.2 + intensity * 0.1;
+        tmpColor.setHSL(hue, sat, lightness);
         colArr[i3] = tmpColor.r;
         colArr[i3 + 1] = tmpColor.g;
         colArr[i3 + 2] = tmpColor.b;
@@ -78,7 +85,8 @@ export default function WaveMode({ getAudioData, params }) {
       colAttr.needsUpdate = true;
     });
 
-    groupRef.current.rotation.z += 0.001 + speed * 0.004;
+    // とてもゆっくり回転
+    groupRef.current.rotation.z += 0.0008 + speed * 0.002;
   });
 
   return (
@@ -99,7 +107,12 @@ export default function WaveMode({ getAudioData, params }) {
               itemSize={3}
             />
           </bufferGeometry>
-          <lineBasicMaterial vertexColors transparent opacity={0.7} linewidth={1} />
+          <lineBasicMaterial
+            vertexColors
+            transparent
+            opacity={0.65}
+            linewidth={1}
+          />
         </line>
       ))}
     </group>
