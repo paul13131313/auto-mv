@@ -4,7 +4,10 @@ import ParticleMode from './modes/ParticleMode';
 import WaveMode from './modes/WaveMode';
 import FractalMode from './modes/FractalMode';
 import Controls from './Controls';
+import Faders from './Faders';
 import { useBPMDetector } from '../hooks/useBPMDetector';
+
+const DEFAULT_PARAMS = { intensity: 0.5, complexity: 0.5, speed: 0.5 };
 
 export default function Visualizer({
   isPlaying,
@@ -19,10 +22,13 @@ export default function Visualizer({
   updateCurrentTime,
 }) {
   const [mode, setMode] = useState('PARTICLE');
+  const [params, setParams] = useState(DEFAULT_PARAMS);
   const { detectBPM, getBPM } = useBPMDetector();
 
   // フルスクリーン切替
-  const toggleFullscreen = useCallback(() => {
+  const toggleFullscreen = useCallback((e) => {
+    // コントロールやフェーダーのクリックは無視
+    if (e.target !== e.currentTarget) return;
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen?.();
     } else {
@@ -47,13 +53,13 @@ export default function Visualizer({
   const renderMode = () => {
     switch (mode) {
       case 'PARTICLE':
-        return <ParticleMode getAudioData={getAudioDataWithBPM} />;
+        return <ParticleMode getAudioData={getAudioDataWithBPM} params={params} />;
       case 'WAVE':
-        return <WaveMode getAudioData={getAudioDataWithBPM} />;
+        return <WaveMode getAudioData={getAudioDataWithBPM} params={params} />;
       case 'FRACTAL':
-        return <FractalMode getAudioData={getAudioDataWithBPM} bpm={getBPM()} />;
+        return <FractalMode getAudioData={getAudioDataWithBPM} bpm={getBPM()} params={params} />;
       default:
-        return <ParticleMode getAudioData={getAudioDataWithBPM} />;
+        return <ParticleMode getAudioData={getAudioDataWithBPM} params={params} />;
     }
   };
 
@@ -68,6 +74,8 @@ export default function Visualizer({
         <color attach="background" args={['#000000']} />
         {renderMode()}
       </Canvas>
+
+      <Faders params={params} onChange={setParams} />
 
       <Controls
         isPlaying={isPlaying}
